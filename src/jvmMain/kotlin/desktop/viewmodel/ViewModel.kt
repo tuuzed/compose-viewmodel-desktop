@@ -12,18 +12,29 @@ abstract class ViewModel {
 
 abstract class CoroutineViewModel(protected val scope: CoroutineScope) : ViewModel()
 
+interface ViewModelFactory {
+    fun <VM : ViewModel> createViewModel(clazz: Class<VM>): VM
+}
+
+private class DefaultViewModelFactory(
+    private val scope: CoroutineScope
+) : ViewModelFactory {
+    override fun <VM : ViewModel> createViewModel(clazz: Class<VM>): VM {
+        return runCatching {
+            if (CoroutineViewModel::class.java.isAssignableFrom(clazz)) {
+                clazz.getConstructor(CoroutineScope::class.java).newInstance(scope)
+            } else {
+                clazz.getConstructor().newInstance()
+            }
+        }.getOrNull() ?: throw IllegalStateException("Create Instance Failure(${clazz})")
+    }
+}
+
 @Composable
-inline fun <reified VM : ViewModel> rememberViewModel(): VM {
+fun <VM : ViewModel> rememberViewModel(clazz: Class<VM>): VM {
     val scope = rememberCoroutineScope()
     val vm = remember {
-        runCatching {
-            if (CoroutineViewModel::class.java.isAssignableFrom(VM::class.java)) {
-                VM::class.java.getConstructor(CoroutineScope::class.java).newInstance(scope)
-            } else {
-                VM::class.java.getConstructor().newInstance()
-            }
-        }.getOrNull() ?: throw IllegalStateException("Create Instance Failure(${VM::class.java})")
-
+        DefaultViewModelFactory(scope).createViewModel(clazz)
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -32,4 +43,7 @@ inline fun <reified VM : ViewModel> rememberViewModel(): VM {
     }
     return vm
 }
+
+@Composable
+inline fun <reified VM : ViewModel> rememberViewModel(): VM = rememberViewModel(VM::class.java)
 
