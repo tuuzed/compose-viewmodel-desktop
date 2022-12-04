@@ -8,18 +8,16 @@ import kotlinx.coroutines.CoroutineScope
 
 abstract class ViewModel {
     open fun onCleared() {}
+
+    interface Factory {
+        fun <VM : ViewModel> get(clazz: Class<VM>): VM
+    }
 }
 
 abstract class CoroutineViewModel(protected val scope: CoroutineScope) : ViewModel()
 
-interface ViewModelFactory {
-    fun <VM : ViewModel> createViewModel(clazz: Class<VM>): VM
-}
-
-private class DefaultViewModelFactory(
-    private val scope: CoroutineScope
-) : ViewModelFactory {
-    override fun <VM : ViewModel> createViewModel(clazz: Class<VM>): VM {
+private class DefaultViewModelFactory(private val scope: CoroutineScope) : ViewModel.Factory {
+    override fun <VM : ViewModel> get(clazz: Class<VM>): VM {
         return runCatching {
             if (CoroutineViewModel::class.java.isAssignableFrom(clazz)) {
                 clazz.getConstructor(CoroutineScope::class.java).newInstance(scope)
@@ -31,10 +29,13 @@ private class DefaultViewModelFactory(
 }
 
 @Composable
-fun <VM : ViewModel> rememberViewModel(clazz: Class<VM>): VM {
+fun <VM : ViewModel> rememberViewModel(
+    clazz: Class<VM>,
+    factory: ViewModel.Factory? = null
+): VM {
     val scope = rememberCoroutineScope()
     val vm = remember {
-        DefaultViewModelFactory(scope).createViewModel(clazz)
+        (factory ?: DefaultViewModelFactory(scope)).get(clazz)
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -45,5 +46,6 @@ fun <VM : ViewModel> rememberViewModel(clazz: Class<VM>): VM {
 }
 
 @Composable
-inline fun <reified VM : ViewModel> rememberViewModel(): VM = rememberViewModel(VM::class.java)
-
+inline fun <reified VM : ViewModel> rememberViewModel(
+    factory: ViewModel.Factory? = null
+): VM = rememberViewModel(VM::class.java, factory)
